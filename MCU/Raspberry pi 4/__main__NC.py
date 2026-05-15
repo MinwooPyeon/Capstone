@@ -1,11 +1,10 @@
 import torch
 import cv2
-import numpy as np
 import serial
 import threading
 
 # 시리얼 통신 설정
-seri = serial.Serial(port='/dev/USB0',
+seri = serial.Serial(port='/dev/ttyUSB0',
                      baudrate=9600,
                      parity=serial.PARITY_NONE,
                      stopbits=serial.STOPBITS_ONE,
@@ -16,10 +15,8 @@ model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 
 # 객체 탐지 함수
 def detect_object(frame):
-    # 그레이스케일로 변환
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # 객체 탐지
-    results = model(gray_frame)
+    results = model(frame)
 
     # 탐지된 객체 추출
     detections = results.xyxy[0].cpu().numpy()

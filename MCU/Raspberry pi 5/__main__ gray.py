@@ -1,10 +1,9 @@
 import torch
 import cv2
-import numpy as np
 import serial
 
 # 시리얼 통신 설정
-seri = serial.Serial(port='/dev/USB0',
+seri = serial.Serial(port='/dev/ttyUSB0',
                     baudrate=9600,
                     parity=serial.PARITY_NONE,
                     stopbits=serial.STOPBITS_ONE,

@@ -1,6 +1,5 @@
 import torch
 import cv2
-import numpy as np
 import serial
 
 # 시리얼 통신 설정
