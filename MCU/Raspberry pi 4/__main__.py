@@ -1,37 +1,42 @@
+import os
 import torch
 import cv2
 import serial
 
-# 시리얼 통신 설정
-seri = serial.Serial(port='/dev/ttyUSB0',
-                    baudrate=9600,
-                    parity=serial.PARITY_NONE,
-                    stopbits=serial.STOPBITS_ONE,
-                    bytesize=serial.EIGHTBITS)
+SERIAL_PORT       = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
+CAMERA_INDEX      = int(os.getenv("CAMERA_INDEX", "0"))
+YOLO_MODEL        = os.getenv("YOLO_MODEL", "yolov5s")
+CONFIDENCE_THRESH = float(os.getenv("CONFIDENCE_THRESH", "0.2"))
+PERSON_CLASS_ID   = int(os.getenv("PERSON_CLASS_ID", "0"))
 
-# YOLOv5 모델 로드
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+try:
+    seri = serial.Serial(
+        port=SERIAL_PORT,
+        baudrate=9600,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        bytesize=serial.EIGHTBITS,
+        timeout=2,
+    )
+except serial.SerialException as e:
+    print(f"Error: 시리얼 포트 연결 실패 ({SERIAL_PORT}): {e}")
+    raise SystemExit(1)
 
-# 객체 탐지 함수
+model = torch.hub.load('ultralytics/yolov5', YOLO_MODEL)
+
+
 def detect_object(image):
-    # 객체 탐지
     results = model(image)
-
-    # 탐지된 객체 추출
     detections = results.xyxy[0].cpu().numpy()
-    # 일부 GPU 사용, CPU 호출한 후 numpy 배열로 변환
 
-    # 객체 탐지 결과 초기화
     object_positions = []
     object_classes = []
 
-    # 탐지된 객체 반복
     for detection in detections:
         class_id = int(detection[5])
         confidence = detection[4]
 
-        # 신뢰도가 일정 이상인 객체만 선택
-        if confidence > 0.2:
+        if confidence > CONFIDENCE_THRESH:
             center_x = int((detection[0] + detection[2]) / 2)
             center_y = int((detection[1] + detection[3]) / 2)
             object_positions.append((center_x, center_y))
@@ -39,46 +44,43 @@ def detect_object(image):
 
     return object_positions, object_classes
 
-# 메인 함수
+
+def sendToArduino(led_status):
+    comm = f"LED{led_status}\n"
+    print(f"Send: LED{led_status}")
+    seri.write(comm.encode("ascii"))
+
+
 def main():
-    cap = cv2.VideoCapture(0)  # 웹캠 사용을 위한 비디오 캡처 객체 생성
+    cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
-        print("Error: Failed to open webcam.")
+        print(f"Error: 카메라를 열 수 없습니다. (index={CAMERA_INDEX})")
         return
 
+    last_led_status = None
+
     while True:
-        ret, frame = cap.read()  # 프레임 읽기
+        ret, frame = cap.read()
         if not ret:
-            print("Error: Failed to capture frame.")
+            print("Error: 프레임을 읽을 수 없습니다.")
             break
 
-        # 객체 탐지
         object_positions, object_classes = detect_object(frame)
-        
-        # 사람이 탐지된 경우 LED0 켜기
-        if 0 in object_classes:
-            sendToArduino(0)
-        else:
-            # 사람이 탐지되지 않은 경우 LED1 켜기
-            sendToArduino(1)
 
-        # 화면에 프레임 표시
+        led_status = 0 if PERSON_CLASS_ID in object_classes else 1
+
+        if led_status != last_led_status:
+            sendToArduino(led_status)
+            last_led_status = led_status
+
         cv2.imshow('Object Detection', frame)
 
-        # 'q' 키를 누르면 종료
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-    # 비디오 캡처 객체 해제
     cap.release()
     cv2.destroyAllWindows()
 
-# 아두이노로 LED 상태 전송하는 함수
-def sendToArduino(led_status):
-    comm = 'LED' + str(led_status)
-    print('Send:', comm)
-    comm += '\n'
-    seri.write(bytes(comm, encoding='ascii'))
 
 if __name__ == "__main__":
     main()
